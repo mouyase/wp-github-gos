@@ -1,11 +1,11 @@
 <?php
 /*
  * Plugin Name: Github 附件存储
- * Plugin URI: https://github.com/niqingyang/wp-github-gos
+ * Plugin URI: https://github.com/mouyase/wp-github-gos
  * Description: 使用 Github 作为附件存储空间
- * Version: 1.0
- * Author: niqingyang
- * Author URI: https://acme.top
+ * Version: 1.1.1
+ * Author: 某亚瑟
+ * Author URI: https://yojigen.tech
  * License: MIT
  */
 error_reporting(0);
@@ -174,66 +174,79 @@ function github_delete_local_file ($file)
  */
 function github_upload_attachments ($metadata)
 {
-	$wp_uploads = wp_upload_dir();
-	// 生成object在OSS中的存储路径
-	if(get_option('upload_path') == '.')
-	{
-		// 如果含有“./”则去除之
-		$metadata['file'] = str_replace("./", '', $metadata['file']);
-	}
-	$object = str_replace("\\", '/', $metadata['file']);
-	$object = str_replace(get_home_path(), '', $object);
-	
-	// 在本地的存储路径
-	$file = get_home_path() . $object; // 向上兼容，较早的WordPress版本上$metadata['file']存放的是相对路径
-	                                   
-	// 设置可选参数
-	$opt = array(
-		'Content-Type' => $metadata['type']
-	);
-	
-	// 执行上传操作
-	$ret = github_file_upload('/' . $object, $file, $opt);
-	
-	if($ret !== false && is_array($ret) && $ret['code'] != 0)
-	{
-		return [
-			'error' => $ret['message']
-		];
-	}
-	
-	// 获取URL参数
-	if(@file_exists($file))
-	{
-		// 获取WP配置信息
-		$github_sync_options = get_option('github_sync_options', TRUE);
-		$upload_url_params = $github_sync_options['upload_url_params'];
-		
-		if(! empty($upload_url_params) && strpos($object, "?") === false)
+	$mime_types = get_allowed_mime_types();
+    $image_mime_types = array(
+        $mime_types['jpg|jpeg|jpe'],
+        $mime_types['gif'],
+        $mime_types['png'],
+        $mime_types['bmp'],
+        $mime_types['tiff|tif'],
+        $mime_types['ico'],
+    );
+	// 例如mp4等格式 上传后根据配置选择是否删除 删除后媒体库会显示默认图片 点开内容是正常的
+    // 图片在缩略图处理
+    if (!in_array($metadata['type'], $image_mime_types)) {
+		$wp_uploads = wp_upload_dir();
+		// 生成object在OSS中的存储路径
+		if(get_option('upload_path') == '.')
 		{
-			$image_data = getimagesize($file);
+			// 如果含有“./”则去除之
+			$metadata['file'] = str_replace("./", '', $metadata['file']);
+		}
+		$object = str_replace("\\", '/', $metadata['file']);
+		$object = str_replace(get_home_path(), '', $object);
+		
+		// 在本地的存储路径
+		$file = get_home_path() . $object; // 向上兼容，较早的WordPress版本上$metadata['file']存放的是相对路径
+										   
+		// 设置可选参数
+		$opt = array(
+			'Content-Type' => $metadata['type']
+		);
+		
+		// 执行上传操作
+		$ret = github_file_upload('/' . $object, $file, $opt);
+		
+		if($ret !== false && is_array($ret) && $ret['code'] != 0)
+		{
+			return [
+				'error' => $ret['message']
+			];
+		}
+		
+		// 获取URL参数
+		if(@file_exists($file))
+		{
+			// 获取WP配置信息
+			$github_sync_options = get_option('github_sync_options', TRUE);
+			$upload_url_params = $github_sync_options['upload_url_params'];
 			
-			if($image_data != false)
+			if(! empty($upload_url_params) && strpos($object, "?") === false)
 			{
-				$upload_url_params = strtr($upload_url_params, [
-					'{width}' => $image_data[0],
-					'{height}' => $image_data[1],
-					'{size}' => $image_data['bits']
-				]);
-				$metadata['width'] = $image_data[0];
-				$metadata['height'] = $image_data[1];
-				$metadata['size'] = $image_data['bits'];
+				$image_data = getimagesize($file);
 				
-				$metadata['url'] .= '?' . trim($upload_url_params, '?');
+				if($image_data != false)
+				{
+					$upload_url_params = strtr($upload_url_params, [
+						'{width}' => $image_data[0],
+						'{height}' => $image_data[1],
+						'{size}' => $image_data['bits']
+					]);
+					$metadata['width'] = $image_data[0];
+					$metadata['height'] = $image_data[1];
+					$metadata['size'] = $image_data['bits'];
+					
+					$metadata['url'] .= '?' . trim($upload_url_params, '?');
+				}
 			}
 		}
-	}
-	
-	// 如果不在本地保存，则删除本地文件
-	if(github_is_delete_local_file())
-	{
-		github_delete_local_file($file);
-	}
+		
+		// 如果不在本地保存，则删除本地文件
+		if(github_is_delete_local_file())
+		{
+			github_delete_local_file($file);
+		}
+    }
 	return $metadata;
 }
 
@@ -248,6 +261,24 @@ if(substr_count($_SERVER['REQUEST_URI'], '/update.php') <= 0)
  */
 function github_upload_thumbs ($metadata)
 {
+	//获取上传路径
+	$wp_uploads = wp_upload_dir();
+	$basedir = $wp_uploads['basedir'];
+	if (isset($metadata['file'])) {
+		// Maybe there is a problem with the old version
+		$object ='/' . get_option('upload_path') . '/' . $metadata['file'];
+		$file = $basedir . '/' . $metadata['file'];
+		// 设置可选参数
+		$opt = array(
+			'Content-Type' => $metadata['type']
+		);
+		github_file_upload($object, $file, $opt);
+		// 如果不在本地保存，则删除本地文件
+		if(github_is_delete_local_file())
+		{
+			github_delete_local_file($file);
+		}
+	}
 	// 上传所有缩略图
 	if(isset($metadata['sizes']) && count($metadata['sizes']) > 0)
 	{
@@ -262,12 +293,8 @@ function github_upload_thumbs ($metadata)
 		{
 			return $metadata;
 		}
-		// 获取上传路径
-		$wp_uploads = wp_upload_dir();
-		$basedir = $wp_uploads['basedir'];
-		$file_dir = $metadata['file'];
 		// 得到本地文件夹和远端文件夹
-		$file_path = $basedir . '/' . dirname($file_dir) . '/';
+        $file_path = $basedir . '/' . dirname($metadata['file']) . '/';
 		if(get_option('upload_path') == '.')
 		{
 			$file_path = str_replace("\\", '/', $file_path);
