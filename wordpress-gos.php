@@ -364,22 +364,16 @@ function github_delete_remote_file ($file)
 add_action('wp_delete_file', 'github_delete_remote_file', 100);
 
 // 当upload_path为根目录时，需要移除URL中出现的“绝对路径”
-function modefiy_img_url ($url, $post_id)
+function github_modefiy_img_url ($url, $post_id)
 {
-	$home_path = str_replace(array(
-		'/',
-		'\\'
-	), array(
-		'',
-		''
-	), get_home_path());
-	$url = str_replace($home_path, '', $url);
-	return $url;
+    // 移除 ./ 和 项目根路径
+    $url = str_replace(array('./', get_home_path()), array('', ''), $url);
+    return $url;
 }
 
 if(get_option('upload_path') == '.')
 {
-	add_filter('wp_get_attachment_url', 'modefiy_img_url', 30, 2);
+	add_filter('wp_get_attachment_url', 'github_modefiy_img_url', 30, 2);
 }
 
 function github_read_dir_queue ($dir)
