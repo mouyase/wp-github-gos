@@ -375,7 +375,7 @@ function github_setting_page () {
 		echo '<div class="updated"><p><strong>本次操作成功同步' . $i . '个文件</strong></p></div>';
 	}
 	// 替换数据库链接
-	if(! empty($_POST) and $_POST['type'] == 'qcloud_cos_replace') {
+	if(! empty($_POST) and $_POST['type'] == 'github_cos_replace') {
 		global $wpdb;
 		$table_name = $wpdb->prefix . 'posts';
 		$oldurl = trim($_POST['old_url']);
@@ -534,7 +534,7 @@ function github_setting_page () {
 				<tr>
 					<th>                        <legend></legend>
 					</th>
-					<input type="hidden" name="type" value="qcloud_cos_replace">
+					<input type="hidden" name="type" value="github_cos_replace">
 					<td><input type="submit" name="submit" value="<?php _e('开始替换', 'wordpress-gos')?>" />                    
 						<p>
 							<b><?php _e('注意：如果是首次替换，请注意备份！此功能只限于替换文章中使用的资源链接', 'wordpress-gos')?></b>
