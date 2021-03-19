@@ -32,7 +32,8 @@ function github_set_options () {
 			'token' => "",
 			'nothumb' => "false", // 是否上传所缩略图
 	'nolocalsaving' => "false", // 是否保留本地备份
-	'upload_url_path' => "" // URL前缀
+	'upload_url_path' => "", // URL前缀
+	'update_file_name' => "false", // 是否重命名文件名
 	);
 	$ret = add_option('github_sync_options', $options, '', 'yes');
 	// 添加失败则获取已存在的数据，不为空则更新upload_url_path
@@ -327,6 +328,18 @@ function github_read_dir_queue ($dir) {
 	}
 	return $dd;
 }
+// 上传文件时修改文件名
+function github_sanitize_file_name($filename) {
+    $github_sync_options = get_option('github_sync_options');
+    switch ($github_sync_options['update_file_name']) {
+        case "md5":
+            return  md5($filename) . "." . pathinfo($filename, PATHINFO_EXTENSION);
+        case "time":
+            return date("YmdHis", current_time('timestamp'))  . mt_rand(100, 999) . "." . pathinfo($filename, PATHINFO_EXTENSION);
+        default:
+            return $filename;
+    }}
+add_filter( 'sanitize_file_name', 'github_sanitize_file_name', 10, 1 );
 // 在插件列表页添加设置按钮
 function github_plugin_action_links ($links, $file) {
 	if($file == plugin_basename(dirname(__FILE__) . '/wordpress-gos.php')) {
@@ -347,14 +360,15 @@ function github_setting_page () {
 	}
 	$options = array();
 	if(! empty($_POST) and $_POST['type'] == 'github_set') {
-		$options['owner'] = (isset($_POST['owner'])) ? trim(stripslashes($_POST['owner'])) : '';
-		$options['repo'] = (isset($_POST['repo'])) ? trim(stripslashes($_POST['repo'])) : '';
-		$options['token'] = (isset($_POST['token'])) ? trim(stripslashes($_POST['token'])) : '';
-		$options['nothumb'] = (isset($_POST['nothumb'])) ? 'true' : 'false';
-		$options['nolocalsaving'] = (isset($_POST['nolocalsaving'])) ? 'true' : 'false';
+		$options['owner'] = isset($_POST['owner']) ? sanitize_text_field($_POST['owner']) : '';
+		$options['repo'] = isset($_POST['repo']) ? sanitize_text_field($_POST['repo']) : '';
+		$options['token'] = isset($_POST['token']) ? sanitize_text_field($_POST['token']) : '';
+		$options['nothumb'] = isset($_POST['nothumb']) ? 'true' : 'false';
+		$options['nolocalsaving'] = isset($_POST['nolocalsaving']) ? 'true' : 'false';
 		// 仅用于插件卸载时比较使用
-		$options['upload_url_path'] = (isset($_POST['upload_url_path'])) ? trim(stripslashes($_POST['upload_url_path'])) : '';
-		$options['upload_url_params'] = (isset($_POST['upload_url_params'])) ? trim(stripslashes($_POST['upload_url_params'])) : '';
+		$options['upload_url_path'] = isset($_POST['upload_url_path']) ? sanitize_text_field($_POST['upload_url_path']) : '';
+		$options['upload_url_params'] = isset($_POST['upload_url_params']) ? sanitize_text_field($_POST['upload_url_params']) : '';
+		$options['update_file_name'] = isset($_POST['update_file_name']) ? sanitize_text_field($_POST['update_file_name']) : 'false';
 	}
 	if(! empty($_POST) and $_POST['type'] == 'github_sync_all') {
 		// 设置不超时
@@ -395,12 +409,12 @@ function github_setting_page () {
 	if($options !== array()) {
 		// 更新数据库
 		update_option('github_sync_options', $options);
-		$upload_path = trim(trim(stripslashes($_POST['upload_path'])), '/');
+		$upload_path = trim(sanitize_text_field($_POST['upload_path']), '/');
 		$upload_path = ($upload_path == '') ? ('wp-content/uploads') : ($upload_path);
 		update_option('upload_path', $upload_path);
-		$upload_url_path = trim(trim(stripslashes($_POST['upload_url_path'])), '/');
+		$upload_url_path = trim(sanitize_text_field($_POST['upload_url_path']), '/');
 		update_option('upload_url_path', $upload_url_path);
-		$upload_url_params = trim(trim(stripslashes($_POST['upload_url_params'])), '?');
+		$upload_url_params = trim(sanitize_text_field($_POST['upload_url_params']), '?');
 		update_option('upload_url_params', $upload_url_params);
 		?>
 		<div class="updated">
@@ -420,6 +434,7 @@ function github_setting_page () {
 	$github_nothumb = esc_attr($github_sync_options['nothumb']);
 	$github_nothumb = ($github_nothumb == 'true');
 	$github_nolocalsaving = esc_attr($github_sync_options['nolocalsaving']);
+    $github_update_file_name = esc_attr($github_sync_options['update_file_name']);
 	$github_nolocalsaving = ($github_nolocalsaving == 'true');
 	?>
 	<div class="wrap" style="margin: 10px;">
@@ -465,6 +480,18 @@ function github_setting_page () {
 	?> />
 						<p><?php _e('建议不勾选', 'wordpress-gos')?></p></td>
 				</tr>
+                <tr>
+                    <th>
+                        <legend>自动重命名文件</legend>
+                    </th>
+                    <td>
+                        <select name="update_file_name">
+                            <option <?php if ($github_update_file_name == 'false') {echo 'selected="selected"';} ?> value="false">不处理</option>
+                            <option <?php if ($github_update_file_name == 'md5') {echo 'selected="selected"';} ?> value="md5">MD5</option>
+                            <option <?php if ($github_update_file_name == 'time') {echo 'selected="selected"';} ?> value="time">时间戳+随机数</option>
+                        </select>
+                    </td>
+                </tr>
 				<tr>
 					<th><legend><?php _e('本地文件夹', 'wordpress-gos')?></legend></th>
 					<td><input type="text" name="upload_path" value="<?php echo $upload_path; ?>" size="50" placeholder="<?php _e('请输入上传文件夹', 'wordpress-gos')?>" />
